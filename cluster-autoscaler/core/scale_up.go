@@ -59,7 +59,6 @@ func ScaleUp(context *AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes 
 			upcomingNodes = append(upcomingNodes, nodeTemplate)
 		}
 	}
-	glog.V(4).Infof("Upcoming %d nodes", len(upcomingNodes))
 
 	podsRemainUnschedulable := make(map[*apiv1.Pod]bool)
 	expansionOptions := make([]expander.Option, 0)
@@ -120,16 +119,12 @@ func ScaleUp(context *AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes 
 			}
 			if option.NodeCount > 0 {
 				expansionOptions = append(expansionOptions, option)
-			} else {
-				glog.V(2).Infof("No need for any nodes in %s", nodeGroup.Id())
 			}
-		} else {
-			glog.V(4).Info("No pod can fit to %s", nodeGroup.Id())
 		}
 	}
 
 	if len(expansionOptions) == 0 {
-		glog.V(1).Info("No expansion options")
+		glog.V(1).Info("No node group can help with pending pods.")
 		for pod, unschedulable := range podsRemainUnschedulable {
 			if unschedulable {
 				context.Recorder.Event(pod, apiv1.EventTypeNormal, "NotTriggerScaleUp",

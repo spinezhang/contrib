@@ -162,7 +162,6 @@ use-reviewers
 use-unicast
 user-whitelist
 verify-unschedulable-pods
-vrid
 vrrp-password
 watch-namespace
 weak-stable-jobs

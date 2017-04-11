@@ -48,7 +48,7 @@ spec:
         app: cluster-autoscaler
     spec:
       containers:
-        - image: gcr.io/google_containers/cluster-autoscaler:v0.5.1
+        - image: gcr.io/google_containers/cluster-autoscaler:v0.4.0
           name: cluster-autoscaler
           resources:
             limits:
@@ -60,7 +60,6 @@ spec:
           command:
             - ./cluster-autoscaler
             - --v=4
-            - --stderrthreshold=info
             - --cloud-provider=aws
             - --skip-nodes-with-local-storage=false
             - --nodes=1:10:k8s-worker-asg-1
@@ -99,7 +98,7 @@ spec:
         app: cluster-autoscaler
     spec:
       containers:
-        - image: gcr.io/google_containers/cluster-autoscaler:v0.5.1
+        - image: gcr.io/google_containers/cluster-autoscaler:v0.4.0
           name: cluster-autoscaler
           resources:
             limits:
@@ -111,7 +110,6 @@ spec:
           command:
             - ./cluster-autoscaler
             - --v=4
-            - --stderrthreshold=info
             - --cloud-provider=aws
             - --skip-nodes-with-local-storage=false
             - --expander=least-waste

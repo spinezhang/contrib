@@ -202,7 +202,7 @@ func createKubeClient(flags *flag.FlagSet, inCluster bool) (kube_client.Interfac
 		config, err = clientConfig.ClientConfig()
 	}
 	if err != nil {
-		return nil, fmt.Errorf("error connecting to the client: %v", err)
+		fmt.Errorf("error connecting to the client: %v", err)
 	}
 	config.ContentType = *contentType
 	return kube_client.NewForConfigOrDie(config), nil

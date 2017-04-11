@@ -48,7 +48,7 @@ import (
 const (
 	reloadQPS                = 10.0
 	resyncPeriod             = 10 * time.Second
-	lbApiPort                = 8081
+	lbApiPort                = 8181
 	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
 	lbHostKey                = "serviceloadbalancer/lb.host"
 	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
@@ -140,6 +140,8 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
+
+	rootHttpService = flags.String("root-http-service", "", `if set, use this service for / path.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -289,7 +291,7 @@ func (s *staticPageHandler) loadUrl(url string) error {
 }
 
 // write writes the configuration file, will write to stdout if dryRun == true
-func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool) (err error) {
+func (cfg *loadBalancerConfig) write(services map[string][]service, defaultHttpSvc string,dryRun bool) (err error) {
 	var w io.Writer
 	if dryRun {
 		w = os.Stdout
@@ -324,6 +326,8 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 		conf["defLbAlgorithm"] = cfg.lbDefAlgorithm
 	}
 
+	conf["rootHttpService"] = defaultHttpSvc
+
 	err = t.Execute(w, conf)
 	return
 }
@@ -355,6 +359,7 @@ type loadBalancerController struct {
 	forwardServices   bool
 	tcpServices       map[string]int
 	httpPort          int
+	rootHttpService	  string
 }
 
 // getTargetPort returns the numeric value of TargetPort
@@ -363,8 +368,7 @@ func getTargetPort(servicePort *api.ServicePort) int {
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
-func (lbc *loadBalancerController) getEndpoints(
-	s *api.Service, servicePort *api.ServicePort) (endpoints []string) {
+func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort *api.ServicePort) (endpoints []string) {
 	ep, err := lbc.epLister.GetServiceEndpoints(s)
 	if err != nil {
 		return
@@ -394,7 +398,27 @@ func (lbc *loadBalancerController) getEndpoints(
 			}
 		}
 	}
+	endpoints = RemoveDuplicate(endpoints)
 	return
+}
+
+func RemoveDuplicate(endpoints []string) []string {
+	var result []string = []string{}
+	for _, item := range endpoints {
+		if len(result) == 0 {
+			result = append(result, item)
+		} else {
+			for k, v := range result {
+				if item == v {
+					break
+				}
+				if k == len(result)-1 {
+					result = append(result, item)
+				}
+			}
+		}
+	}
+	return result
 }
 
 // encapsulates all the hacky convenience type name modifications for lb rules.
@@ -432,8 +456,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				ep = lbc.getEndpoints(&s, &servicePort)
 			}
 			if len(ep) == 0 {
-				glog.Infof("No endpoints found for service %v, port %+v",
-					sName, servicePort)
+				glog.Infof("No endpoints found for service %v, port %+v",sName, servicePort)
 				continue
 			}
 			newSvc := service{
@@ -493,11 +516,20 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				} else {
 					httpSvc = append(httpSvc, newSvc)
 				}
+
+				if  lbc.rootHttpService =="" && newSvc.BackendPort == 80 {
+					lbc.rootHttpService = newSvc.Name
+					glog.Infof("No default root http is set, set to the first 80 svc:%s\n",lbc.rootHttpService)
+				}
+
 			}
-			glog.Infof("Found service: %+v", newSvc)
+			//glog.Infof("Found service: %+v", newSvc)
 		}
 	}
 
+	glog.Infof("Default root http Svc:%s\n",lbc.rootHttpService)
+	//glog.Infof("found httpsTermSvc:%v\n",httpsTermSvc)
+	//glog.Infof("found tcpSvc:%v\n",tcpSvc)
 	sort.Sort(serviceByName(httpSvc))
 	sort.Sort(serviceByName(httpsTermSvc))
 	sort.Sort(serviceByName(tcpSvc))
@@ -515,12 +547,15 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if len(httpSvc) == 0 && len(httpsTermSvc) == 0 && len(tcpSvc) == 0 {
 		return nil
 	}
+	glog.Infof("sync httpSvc:%v\n",httpSvc)
+	glog.Infof("sync httpsTermSvc:%v\n",httpsTermSvc)
+	glog.Infof("sync tcpSvc:%v\n",tcpSvc)
 	if err := lbc.cfg.write(
 		map[string][]service{
 			"http":      httpSvc,
 			"httpsTerm": httpsTermSvc,
 			"tcp":       tcpSvc,
-		}, dryRun); err != nil {
+		}, lbc.rootHttpService, dryRun); err != nil {
 		return err
 	}
 	if dryRun {
@@ -554,6 +589,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		forwardServices: *forwardServices,
 		httpPort:        *httpPort,
 		tcpServices:     tcpServices,
+		rootHttpService: *rootHttpService,
 	}
 
 	enqueue := func(obj interface{}) {
@@ -687,6 +723,8 @@ func main() {
 	} else {
 		glog.Infof("No tcp/https services specified")
 	}
+
+	glog.Infof("default http root service:%s\n",*rootHttpService)
 
 	if *startSyslog {
 		cfg.startSyslog = true

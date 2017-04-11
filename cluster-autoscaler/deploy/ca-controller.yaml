@@ -30,7 +30,6 @@ spec:
           command:
             - ./cluster-autoscaler
             - --v=4
-            - --stderrthreshold=info
             - --nodes={{MIN}}:{{MAX}}:{{MIG_LINK}}
           volumeMounts:
             - name: ssl-certs
